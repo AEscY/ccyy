@@ -1,7 +1,5 @@
 import yaml
-import json
-from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict
 
 class AirdropBridge:
     def __init__(self):
@@ -16,26 +14,21 @@ class AirdropBridge:
             return yaml.safe_load(f)
 
     def scan_chain(self) -> List[Dict]:
-        """模拟扫描，返回一些测试数据"""
-        # 实际应调用 scanner/onchain_monitor.py 的监控逻辑
+        # 模拟扫描，返回测试数据
         return [
             {"contract": "0x123...", "score": 85, "chain": "ethereum", "name": "Test Project 1"},
             {"contract": "0x456...", "score": 60, "chain": "base", "name": "Test Project 2"},
         ]
 
     def evaluate_project(self, project_data: Dict) -> Dict:
-        """评估项目，返回任务列表"""
-        # 实际应调用 commander/hunter.py 的评估逻辑
+        # 模拟评估
         return {"tasks": ["claim", "swap"]}
 
     def execute_tasks(self, task_list: List[Dict]) -> bool:
-        """执行任务，返回成功与否"""
-        # 实际应调用 executor/farmer.py 的执行逻辑
         print(f"Executing tasks: {task_list}")
         return True
 
     def run_cycle(self):
-        """完整流水线"""
         print("🔄 开始一轮扫描...")
         projects = self.scan_chain()
         for project in projects:
