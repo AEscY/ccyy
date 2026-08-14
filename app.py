@@ -47,7 +47,7 @@ def fetch_cryptorank():
     try:
         url = "https://api.cryptorank.io/v2/airdrops"
         headers = {
-            "X-API-Key": API_KEY,
+            "api_key": API_KEY,
             "Accept": "application/json"
         }
         params = {"limit": 20, "status": "active"}
