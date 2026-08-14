@@ -1,8 +1,7 @@
 requests==2.31.0
-web3==6.15.0          # 链上交互
-beautifulsoup4==4.12.2 # HTML解析
-playwright==1.45.0    # 浏览器自动化
-gunicorn==21.2.0      # Web服务器
+web3==6.15.0
+beautifulsoup4==4.12.2
+playwright==1.45.0
+gunicorn==21.2.0
 python-telegram-bot==20.7
 pyyaml==6.0.1
-sqlalchemy==2.0.30
