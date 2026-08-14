@@ -1,25 +1,20 @@
+# 多链 RPC 配置
 rpc:
   ethereum: "https://eth.llamarpc.com"
-  base: "https://base.llamarpc.com"
-  bsc: "https://bsc.llamarpc.com"
+  polygon: "https://polygon.llamarpc.com"
   arbitrum: "https://arb1.arbitrum.io/rpc"
   optimism: "https://mainnet.optimism.io"
-  solana: "https://api.mainnet-beta.solana.com"
-  aptos: "https://fullnode.mainnet.aptoslabs.com/v1"
-  sui: "https://fullnode.mainnet.sui.io"
+  base: "https://base.llamarpc.com"
+  bsc: "https://bsc.llamarpc.com"
+  avalanche: "https://api.avax.network/ext/bc/C/rpc"
+
+# CryptoRank API 配置（注册获取免费 API Key）
 cryptorank:
+  api_key: ""  # 填写你的 API Key，或通过环境变量 CRYPTORANK_API_KEY 设置
   base_url: "https://api.cryptorank.io/v1"
-  api_key: ""
 
-risk:
-  max_gas_price: 50
-  max_transaction_value: 0.1
-  cooldown_seconds: 60
-
+# 扫描配置
 scanner:
-  min_score: 70
-  max_items: 10
-  sources:
-    - cryptorank
-    - onchain
-    - mock
+  min_score: 60
+  max_items: 20
+  timeout: 15
