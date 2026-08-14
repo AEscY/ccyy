@@ -38,6 +38,7 @@ class AirdropBridge:
             }
 
     def scan_chain(self) -> List[Dict]:
+        # 如果 mock 开启，直接返回模拟数据
         if self.use_mock:
             return self._get_mock_data()
 
@@ -77,6 +78,12 @@ class AirdropBridge:
             if len(all_projects) >= self.config.get("scanner", {}).get("max_items", 10):
                 break
 
+        # 如果所有来源都没获取到，使用模拟数据兜底
+        if not all_projects:
+            logger.warning("No data from any source, using mock data as fallback")
+            all_projects = self._get_mock_data()
+
+        # 去重
         seen = set()
         unique_projects = []
         for p in all_projects:
@@ -133,4 +140,5 @@ class AirdropBridge:
         return [
             {"name": "Mock Project 1", "url": "https://example1.com", "score": 85, "chain": "ethereum", "source": "mock"},
             {"name": "Mock Project 2", "url": "https://example2.com", "score": 70, "chain": "base", "source": "mock"},
+            {"name": "Mock Project 3", "url": "https://example3.com", "score": 60, "chain": "bsc", "source": "mock"},
         ]
