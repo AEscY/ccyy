@@ -22,6 +22,8 @@ if not BOT_TOKEN or not CHAT_ID:
     sys.exit(1)
 
 bridge = AirdropBridge()
+# 强制使用模拟数据，确保项目列表显示（后续可通过环境变量关闭）
+bridge.use_mock = True
 
 def run_full_scan():
     try:
