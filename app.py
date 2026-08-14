@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Airdrop Radar - 极致稳定版（使用 f-string）
+Airdrop Radar - CryptoRank v3 支持版
 """
 
 import os
@@ -16,8 +16,11 @@ logger = logging.getLogger(__name__)
 # ===== 环境变量 =====
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
+API_KEY = os.environ.get("API_KEY") or os.environ.get("CRYPTORANK_API_KEY")
 
-# ===== 硬编码项目数据（保证始终显示） =====
+logger.info(f"API_KEY configured: {'Yes' if API_KEY else 'No'}")
+
+# ===== 硬编码项目数据（兜底） =====
 PROJECTS = [
     {"name": "Uniswap V4", "chain": "Ethereum", "score": 92, "url": "https://uniswap.org", "source": "本地"},
     {"name": "Aave V3", "chain": "Polygon", "score": 88, "url": "https://aave.com", "source": "本地"},
@@ -30,6 +33,83 @@ PROJECTS = [
 
 current_projects = PROJECTS.copy()
 last_scan_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+# ===== CryptoRank v3 API 调用 =====
+def fetch_cryptorank_v3():
+    """
+    从 CryptoRank v3 API 获取空投数据
+    API 文档: https://api.cryptorank.io/v3
+    """
+    if not API_KEY:
+        logger.warning("No API_KEY provided")
+        return None
+
+    try:
+        import requests
+        
+        # v3 端点
+        url = "https://api.cryptorank.io/v3/airdrops"
+        
+        # v3 认证方式：Bearer Token
+        headers = {
+            "Authorization": f"Bearer {API_KEY}",
+            "Accept": "application/json"
+        }
+        
+        # 参数
+        params = {
+            "limit": 20,
+            "status": "active"
+        }
+        
+        logger.info(f"Fetching from CryptoRank v3: {url}")
+        resp = requests.get(url, headers=headers, params=params, timeout=15)
+        
+        logger.info(f"Response status: {resp.status_code}")
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            logger.info(f"Response keys: {data.keys() if isinstance(data, dict) else 'not dict'}")
+            
+            # v3 响应格式: {"data": [...], "status": "success", ...}
+            items = data.get("data", [])
+            
+            if not items:
+                logger.warning("No items in response")
+                return None
+            
+            projects = []
+            for item in items[:20]:
+                # 处理链信息
+                chain = item.get("chain", "多链")
+                if isinstance(chain, list):
+                    chain = chain[0] if chain else "多链"
+                
+                # 处理评分
+                score = item.get("popularity") or item.get("score") or item.get("rating")
+                if score is None:
+                    score = 50
+                try:
+                    score = int(score)
+                except:
+                    score = 50
+                
+                projects.append({
+                    "name": item.get("name") or item.get("title") or "未知",
+                    "chain": chain,
+                    "score": min(score + 10, 100),  # 略微提升评分使其更突出
+                    "url": item.get("website") or item.get("url") or "",
+                    "source": "CryptoRank"
+                })
+            
+            return projects
+        else:
+            logger.error(f"API error: {resp.status_code} - {resp.text[:200]}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Fetch error: {e}")
+        return None
 
 # ===== Telegram 发送 =====
 def send_telegram_message(text):
@@ -47,76 +127,27 @@ def send_telegram_message(text):
 # ===== 扫描函数 =====
 def run_scan():
     global current_projects, last_scan_time
-    api_key = os.environ.get("API_KEY") or os.environ.get("CRYPTORANK_API_KEY")
+    logger.info("Starting scan...")
     
-    if api_key:
-        try:
-            import requests
-            url = "https://api.cryptorank.io/v1/airdrops"
-            headers = {"Authorization": f"Bearer {api_key}"}
-            params = {"limit": 10, "status": "active"}
-            resp = requests.get(url, headers=headers, params=params, timeout=10)
-            
-            if resp.status_code == 200:
-                data = resp.json()
-                items = data.get("data", [])
-                if items:
-                    new_projects = []
-                    for item in items[:10]:
-                        chain = item.get("chain", "多链")
-                        if isinstance(chain, list):
-                            chain = chain[0] if chain else "多链"
-                        new_projects.append({
-                            "name": item.get("name", "未知"),
-                            "chain": chain,
-                            "score": min(item.get("popularity", 50) + 10, 100),
-                            "url": item.get("website", "") or item.get("url", ""),
-                            "source": "CryptoRank"
-                        })
-                    current_projects = new_projects
-                    last_scan_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    send_telegram_message(f"✅ 扫描完成，发现 {len(current_projects)} 个项目")
-                    return
-        except Exception as e:
-            logger.warning(f"Scan failed: {e}")
+    # 尝试从 CryptoRank v3 获取数据
+    projects = fetch_cryptorank_v3()
     
-    send_telegram_message("⚠️ 扫描完成（使用本地缓存）")
+    if projects:
+        current_projects = projects
+        last_scan_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        msg = f"✅ 扫描完成，发现 {len(projects)} 个真实项目 (CryptoRank)"
+        send_telegram_message(msg)
+        logger.info(msg)
+    else:
+        # 使用本地数据
+        current_projects = PROJECTS.copy()
+        last_scan_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        msg = "⚠️ 扫描完成（使用本地数据，API可能未生效）"
+        send_telegram_message(msg)
+        logger.warning(msg)
 
-# ===== 启动时尝试获取真实数据 =====
-def try_fetch_real_data():
-    api_key = os.environ.get("API_KEY") or os.environ.get("CRYPTORANK_API_KEY")
-    if not api_key:
-        return
-    try:
-        import requests
-        url = "https://api.cryptorank.io/v1/airdrops"
-        headers = {"Authorization": f"Bearer {api_key}"}
-        params = {"limit": 10, "status": "active"}
-        resp = requests.get(url, headers=headers, params=params, timeout=10)
-        if resp.status_code == 200:
-            data = resp.json()
-            items = data.get("data", [])
-            if items:
-                global current_projects, last_scan_time
-                new_projects = []
-                for item in items[:10]:
-                    chain = item.get("chain", "多链")
-                    if isinstance(chain, list):
-                        chain = chain[0] if chain else "多链"
-                    new_projects.append({
-                        "name": item.get("name", "未知"),
-                        "chain": chain,
-                        "score": min(item.get("popularity", 50) + 10, 100),
-                        "url": item.get("website", "") or item.get("url", ""),
-                        "source": "CryptoRank"
-                    })
-                current_projects = new_projects
-                last_scan_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                logger.info(f"Fetched {len(new_projects)} real projects")
-    except Exception as e:
-        logger.warning(f"Initial fetch failed: {e}")
-
-try_fetch_real_data()
+# ===== 启动时自动扫描 =====
+run_scan()
 
 # ===== HTTP 处理器 =====
 class Handler(BaseHTTPRequestHandler):
@@ -139,6 +170,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(404)
                 self.end_headers()
         except Exception as e:
+            logger.error(f"Request error: {e}")
             self.send_response(500)
             self.end_headers()
             self.wfile.write(f"Server Error: {e}".encode())
@@ -153,7 +185,6 @@ class Handler(BaseHTTPRequestHandler):
         projects = current_projects
         project_count = len(projects)
         
-        # 构建表格行
         rows = ""
         if not projects:
             rows = "<tr><td colspan='6' style='text-align:center;padding:40px;'>暂无数据</td></tr>"
@@ -184,7 +215,6 @@ class Handler(BaseHTTPRequestHandler):
                         </tr>
                 """
 
-        # 完整 HTML（所有 % 都已移除，使用双 %% 表示文字中的百分号）
         html = f"""
 <!DOCTYPE html>
 <html>
