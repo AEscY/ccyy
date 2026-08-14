@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # 在 bridge.py 顶部添加导入
 from ai.agent import Web3AirdropAgent
 
