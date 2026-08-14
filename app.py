@@ -52,7 +52,7 @@ def fetch_cryptorank_v3():
         
         # v3 认证方式：Bearer Token
         headers = {
-            "Authorization": f"api_key {API_KEY}",
+            "Authorization": f"Bearer {API_KEY}",
             "Accept": "application/json"
         }
         
