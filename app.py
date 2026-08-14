@@ -45,15 +45,41 @@ def send_telegram_message(text):
         return False
 
 # ===== 扫描函数 =====
+import requests
+
+CRYPTORANK_API_KEY = "你的API_KEY"  # 建议放到环境变量
+
+def fetch_cryptorank_airdrops():
+    url = "https://api.cryptorank.io/v1/airdrops"
+    headers = {"Authorization": f"Bearer {CRYPTORANK_API_KEY}"}
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            projects = []
+            for item in data.get("data", [])[:10]:
+                projects.append({
+                    "name": item.get("name", "未知"),
+                    "chain": item.get("chain", "多链"),
+                    "score": item.get("popularity", 50),
+                    "url": item.get("website", ""),
+                    "source": "CryptoRank"
+                })
+            return projects
+    except Exception as e:
+        logger.error(f"CryptoRank 获取失败: {e}")
+    return None
+
 def run_scan():
     global last_projects
-    logger.info("Running scan...")
-    # 实际可替换为真实API，这里用模拟
-    projects = MOCK_PROJECTS.copy()
+    logger.info("正在从 CryptoRank 获取真实空投数据...")
+    projects = fetch_cryptorank_airdrops()
+    if not projects:
+        logger.warning("真实数据获取失败，使用模拟数据兜底")
+        projects = MOCK_PROJECTS.copy()
     last_projects = projects
     msg = f"✅ 扫描完成，发现 {len(projects)} 个项目"
     send_telegram_message(msg)
-    logger.info(msg)
     return projects
 
 # 启动时自动扫描一次
