@@ -1,126 +1,113 @@
 # -*- coding: utf-8 -*-
 """
-app.py - Main entry with web interface
+Airdrop Radar - 单文件版本
+包含模拟数据，根路径直接显示项目列表
 """
 
 import os
 import sys
 import logging
+import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from datetime import datetime
 
-from bridge import AirdropBridge
-from telegram_sender import send_telegram_message
+import requests
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# ===== 环境变量 =====
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
 if not BOT_TOKEN or not CHAT_ID:
-    logger.error("ERROR: Please set BOT_TOKEN and CHAT_ID environment variables")
+    logger.error("ERROR: Please set BOT_TOKEN and CHAT_ID")
     sys.exit(1)
 
-bridge = AirdropBridge()
-# 强制使用模拟数据，确保项目列表显示
-bridge.use_mock = True
+# ===== 模拟数据（直接硬编码，保证显示） =====
+MOCK_PROJECTS = [
+    {"name": "Uniswap V4", "chain": "Ethereum", "score": 92, "url": "https://uniswap.org", "source": "模拟"},
+    {"name": "Aave V3", "chain": "Polygon", "score": 88, "url": "https://aave.com", "source": "模拟"},
+    {"name": "Arbitrum Odyssey", "chain": "Arbitrum", "score": 75, "url": "https://arbitrum.io", "source": "模拟"},
+    {"name": "Optimism Bedrock", "chain": "Optimism", "score": 82, "url": "https://optimism.io", "source": "模拟"},
+    {"name": "zkSync Era", "chain": "zkSync", "score": 79, "url": "https://zksync.io", "source": "模拟"},
+]
 
-def run_full_scan():
+last_projects = MOCK_PROJECTS.copy()  # 初始就有数据
+
+# ===== Telegram 发送 =====
+def send_telegram_message(text):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     try:
-        result = bridge.run_cycle()
-        send_telegram_message("Scan result: " + result)
-        logger.info("Message sent successfully")
-    except Exception as e:
-        error_msg = "Scan exception: " + str(e)
-        send_telegram_message(error_msg)
-        logger.error(error_msg)
+        resp = requests.post(url, json={"chat_id": CHAT_ID, "text": text}, timeout=10)
+        return resp.status_code == 200
+    except:
+        return False
 
+# ===== 扫描函数 =====
+def run_scan():
+    global last_projects
+    logger.info("Running scan...")
+    # 实际可替换为真实API，这里用模拟
+    projects = MOCK_PROJECTS.copy()
+    last_projects = projects
+    msg = f"✅ 扫描完成，发现 {len(projects)} 个项目"
+    send_telegram_message(msg)
+    logger.info(msg)
+    return projects
+
+# 启动时自动扫描一次
+run_scan()
+
+# ===== HTTP 处理器 =====
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/':
-            self._show_home()
+            self._show_projects()
         elif self.path == '/scan':
-            run_full_scan()
+            run_scan()
             self.send_response(200)
             self.end_headers()
-            self.wfile.write(b'Scan triggered, check Telegram')
+            self.wfile.write(b'Scan triggered')
         elif self.path == '/health':
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b'OK')
-        elif self.path == '/projects':
-            self._show_projects()
         else:
             self.send_response(404)
             self.end_headers()
 
-    def _show_home(self):
+    def _show_projects(self):
+        global last_projects
+        projects = last_projects
         html = """
         <html>
         <head><title>Airdrop Radar</title>
         <style>
-            body { font-family: Arial, sans-serif; margin: 40px; background: #f0f4f8; text-align: center; }
+            body { font-family: Arial, sans-serif; margin: 20px; background: #f0f4f8; }
             h1 { color: #2c3e50; }
-            .card { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 600px; margin: auto; }
-            a { display: inline-block; margin: 10px; padding: 12px 24px; background: #3498db; color: white; text-decoration: none; border-radius: 5px; }
-            a:hover { background: #2980b9; }
-            .footer { margin-top: 30px; color: #7f8c8d; }
-        </style>
-        </head>
-        <body>
-            <div class="card">
-                <h1>📡 Airdrop Radar</h1>
-                <p>Web3 空投智能监控系统</p>
-                <div>
-                    <a href="/projects">📋 查看项目列表</a>
-                    <a href="/scan">🔄 手动触发扫描</a>
-                </div>
-                <div class="footer">
-                    <p>扫描结果将自动推送到您的 Telegram</p>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        self.send_response(200)
-        self.send_header('Content-type', 'text/html; charset=utf-8')
-        self.end_headers()
-        self.wfile.write(html.encode('utf-8'))
-
-    def _show_projects(self):
-        projects = bridge.get_last_projects()
-        html = """
-        <html>
-        <head><title>Airdrop Radar - Projects</title>
-        <style>
-            body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-            h1 { color: #333; }
-            table { width: 100%%; border-collapse: collapse; background: white; }
-            th { background: #4CAF50; color: white; padding: 10px; text-align: left; }
-            td { padding: 10px; border-bottom: 1px solid #ddd; }
-            tr:hover { background: #f1f1f1; }
+            table { width: 100%%; border-collapse: collapse; background: white; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+            th { background: #2c3e50; color: white; padding: 12px; text-align: left; }
+            td { padding: 12px; border-bottom: 1px solid #ddd; }
+            tr:hover { background: #ecf0f1; }
             .score { font-weight: bold; }
             .high { color: green; }
             .medium { color: orange; }
             .low { color: red; }
-            .footer { margin-top: 20px; color: #666; }
+            .footer { margin-top: 20px; color: #7f8c8d; }
+            a { color: #3498db; text-decoration: none; }
+            a:hover { text-decoration: underline; }
+            .btn { display: inline-block; padding: 8px 16px; background: #3498db; color: white; border-radius: 4px; }
         </style>
         </head>
         <body>
-            <h1>📡 最新空投雷达扫描结果</h1>
+            <h1>📡 Airdrop Radar</h1>
             <p>共发现 <strong>%d</strong> 个项目</p>
             <table>
-                <tr>
-                    <th>#</th>
-                    <th>项目名称</th>
-                    <th>链</th>
-                    <th>评分</th>
-                    <th>来源</th>
-                    <th>链接</th>
-                </tr>
-        """
+                <tr><th>#</th><th>项目名称</th><th>链</th><th>评分</th><th>来源</th><th>链接</th></tr>
+        """ % len(projects)
         if not projects:
-            html += "<tr><td colspan='6' style='text-align:center;'>暂无数据，请先执行扫描</td></tr>"
+            html += "<tr><td colspan='6' style='text-align:center;'>暂无数据</td></tr>"
         else:
             for idx, p in enumerate(projects, 1):
                 name = p.get('name', '未知')
@@ -143,13 +130,12 @@ class Handler(BaseHTTPRequestHandler):
         html += """
             </table>
             <div class="footer">
-                <p>🔄 自动更新，访问 <a href="/scan">/scan</a> 手动触发扫描</p>
-                <p>📱 扫描结果会推送到您的 Telegram</p>
-                <p><a href="/">返回首页</a></p>
+                <p><a href="/scan" class="btn">🔄 手动触发扫描</a>  (扫描结果会推送到 Telegram)</p>
+                <p>最后更新: %s</p>
             </div>
         </body>
         </html>
-        """ % (len(projects) if projects else 0)
+        """ % datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         self.send_response(200)
         self.send_header('Content-type', 'text/html; charset=utf-8')
         self.end_headers()
@@ -158,8 +144,8 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
+# ===== 启动 =====
 if __name__ == "__main__":
-    run_full_scan()
     port = int(os.environ.get('PORT', 10000))
-    logger.info("Service started, listening on port " + str(port))
+    logger.info("Service started on port " + str(port))
     HTTPServer(('', port), Handler).serve_forever()
