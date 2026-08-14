@@ -1,13 +1,30 @@
+# ========== RPC 配置 ==========
 rpc:
   ethereum: "https://eth.llamarpc.com"
   base: "https://base.llamarpc.com"
   bsc: "https://bsc.llamarpc.com"
+  arbitrum: "https://arb1.arbitrum.io/rpc"
+  optimism: "https://mainnet.optimism.io"
 
+# ========== CryptoRank 配置 ==========
+cryptorank:
+  # 免费层 API（无需注册，直接使用）
+  base_url: "https://api.cryptorank.io/v1"
+  # 如果注册了免费账号可填入，不填则使用公开数据
+  api_key: ""
+
+# ========== 风险配置 ==========
 risk:
   max_gas_price: 50
   max_transaction_value: 0.1
   cooldown_seconds: 60
 
+# ========== 扫描配置 ==========
 scanner:
   min_score: 70
   max_items: 10
+  # 数据源优先级: cryptorank > onchain > mock
+  sources:
+    - cryptorank
+    - onchain
+    - mock
