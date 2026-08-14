@@ -1,6 +1,5 @@
 import os
 import sys
-import time
 import logging
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from bridge import AirdropBridge
@@ -19,7 +18,6 @@ if not BOT_TOKEN or not CHAT_ID:
 bridge = AirdropBridge()
 
 def run_full_scan():
-    """执行完整扫描并推送结果"""
     try:
         result = bridge.run_cycle()
         send_telegram_message("✅ 空投雷达已完成一轮扫描")
@@ -29,7 +27,6 @@ def run_full_scan():
         send_telegram_message(error_msg)
         logger.error(error_msg)
 
-# HTTP 服务器，用于 Render 端口占用和手动触发
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/':
@@ -46,8 +43,6 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
 
 if __name__ == "__main__":
-    # 启动时执行一次
     run_full_scan()
-    # 启动 Web 服务器
     port = int(os.environ.get('PORT', 10000))
     HTTPServer(('', port), Handler).serve_forever()
