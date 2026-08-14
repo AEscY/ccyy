@@ -4,7 +4,9 @@ rpc:
   bsc: "https://bsc.llamarpc.com"
   arbitrum: "https://arb1.arbitrum.io/rpc"
   optimism: "https://mainnet.optimism.io"
-
+  solana: "https://api.mainnet-beta.solana.com"
+  aptos: "https://fullnode.mainnet.aptoslabs.com/v1"
+  sui: "https://fullnode.mainnet.sui.io"
 cryptorank:
   base_url: "https://api.cryptorank.io/v1"
   api_key: ""
