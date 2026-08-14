@@ -20,6 +20,7 @@ class AirdropBridge:
             api_key=self.config.get("cryptorank", {}).get("api_key", "")
         )
         self.use_mock = False
+        self.last_projects = []
 
     def _load_config(self, path: str) -> Dict:
         try:
@@ -76,7 +77,6 @@ class AirdropBridge:
             if len(all_projects) >= self.config.get("scanner", {}).get("max_items", 10):
                 break
 
-        # Deduplicate
         seen = set()
         unique_projects = []
         for p in all_projects:
@@ -110,6 +110,7 @@ class AirdropBridge:
     def run_cycle(self) -> str:
         logger.info("Starting scan cycle...")
         projects = self.scan_chain()
+        self.last_projects = projects
         if not projects:
             return "No eligible projects found"
 
@@ -125,8 +126,11 @@ class AirdropBridge:
         logger.info(summary)
         return summary
 
+    def get_last_projects(self) -> List[Dict]:
+        return self.last_projects
+
     def _get_mock_data(self) -> List[Dict]:
         return [
-            {"name": "Mock Project 1", "url": "", "score": 50, "source": "mock"},
-            {"name": "Mock Project 2", "url": "", "score": 0, "source": "mock"},
+            {"name": "Mock Project 1", "url": "https://example1.com", "score": 85, "chain": "ethereum", "source": "mock"},
+            {"name": "Mock Project 2", "url": "https://example2.com", "score": 70, "chain": "base", "source": "mock"},
         ]
