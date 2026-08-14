@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Airdrop Radar - CryptoRank v3 支持版
+Airdrop Radar - CryptoRank 正确认证版
+使用 X-API-Key 请求头（V2）或 api_key 参数（V1）
 """
 
 import os
@@ -34,82 +35,75 @@ PROJECTS = [
 current_projects = PROJECTS.copy()
 last_scan_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-# ===== CryptoRank v3 API 调用 =====
-def fetch_cryptorank_v3():
-    """
-    从 CryptoRank v3 API 获取空投数据
-    API 文档: https://api.cryptorank.io/v3
-    """
+# ===== CryptoRank API 调用（正确认证） =====
+def fetch_cryptorank():
+    """尝试多种方式获取数据"""
     if not API_KEY:
-        logger.warning("No API_KEY provided")
         return None
 
+    import requests
+
+    # 方案1: V2 端点 + X-API-Key 头（官方推荐）
     try:
-        import requests
-        
-        # v3 端点
-        url = "https://api.cryptorank.io/v3/airdrops"
-        
-        # v3 认证方式：Bearer Token
+        url = "https://api.cryptorank.io/v2/airdrops"
         headers = {
-            "Authorization": f"Bearer {API_KEY}",
+            "X-API-Key": API_KEY,
             "Accept": "application/json"
         }
-        
-        # 参数
+        params = {"limit": 20, "status": "active"}
+        logger.info("Trying V2 with X-API-Key header")
+        resp = requests.get(url, headers=headers, params=params, timeout=15)
+        logger.info(f"V2 status: {resp.status_code}")
+        if resp.status_code == 200:
+            return parse_response(resp.json())
+        else:
+            logger.warning(f"V2 failed: {resp.text[:200]}")
+    except Exception as e:
+        logger.warning(f"V2 error: {e}")
+
+    # 方案2: V1 端点 + api_key 查询参数
+    try:
+        url = "https://api.cryptorank.io/v1/airdrops"
         params = {
+            "api_key": API_KEY,
             "limit": 20,
             "status": "active"
         }
-        
-        logger.info(f"Fetching from CryptoRank v3: {url}")
-        resp = requests.get(url, headers=headers, params=params, timeout=15)
-        
-        logger.info(f"Response status: {resp.status_code}")
-        
+        logger.info("Trying V1 with api_key param")
+        resp = requests.get(url, params=params, timeout=15)
+        logger.info(f"V1 status: {resp.status_code}")
         if resp.status_code == 200:
-            data = resp.json()
-            logger.info(f"Response keys: {data.keys() if isinstance(data, dict) else 'not dict'}")
-            
-            # v3 响应格式: {"data": [...], "status": "success", ...}
-            items = data.get("data", [])
-            
-            if not items:
-                logger.warning("No items in response")
-                return None
-            
-            projects = []
-            for item in items[:20]:
-                # 处理链信息
-                chain = item.get("chain", "多链")
-                if isinstance(chain, list):
-                    chain = chain[0] if chain else "多链"
-                
-                # 处理评分
-                score = item.get("popularity") or item.get("score") or item.get("rating")
-                if score is None:
-                    score = 50
-                try:
-                    score = int(score)
-                except:
-                    score = 50
-                
-                projects.append({
-                    "name": item.get("name") or item.get("title") or "未知",
-                    "chain": chain,
-                    "score": min(score + 10, 100),  # 略微提升评分使其更突出
-                    "url": item.get("website") or item.get("url") or "",
-                    "source": "CryptoRank"
-                })
-            
-            return projects
+            return parse_response(resp.json())
         else:
-            logger.error(f"API error: {resp.status_code} - {resp.text[:200]}")
-            return None
-            
+            logger.warning(f"V1 failed: {resp.text[:200]}")
     except Exception as e:
-        logger.error(f"Fetch error: {e}")
+        logger.warning(f"V1 error: {e}")
+
+    return None
+
+def parse_response(data):
+    """解析 CryptoRank 响应，提取项目列表"""
+    items = data.get("data", [])
+    if not items:
         return None
+    projects = []
+    for item in items[:20]:
+        chain = item.get("chain", "多链")
+        if isinstance(chain, list):
+            chain = chain[0] if chain else "多链"
+        score = item.get("popularity") or item.get("score") or item.get("rating") or 50
+        try:
+            score = int(score)
+        except:
+            score = 50
+        projects.append({
+            "name": item.get("name") or item.get("title") or "未知",
+            "chain": chain,
+            "score": min(score + 10, 100),
+            "url": item.get("website") or item.get("url") or "",
+            "source": "CryptoRank"
+        })
+    return projects
 
 # ===== Telegram 发送 =====
 def send_telegram_message(text):
@@ -129,20 +123,18 @@ def run_scan():
     global current_projects, last_scan_time
     logger.info("Starting scan...")
     
-    # 尝试从 CryptoRank v3 获取数据
-    projects = fetch_cryptorank_v3()
+    projects = fetch_cryptorank()
     
     if projects:
         current_projects = projects
         last_scan_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        msg = f"✅ 扫描完成，发现 {len(projects)} 个真实项目 (CryptoRank)"
+        msg = f"✅ 扫描完成，发现 {len(projects)} 个真实项目"
         send_telegram_message(msg)
         logger.info(msg)
     else:
-        # 使用本地数据
         current_projects = PROJECTS.copy()
         last_scan_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        msg = "⚠️ 扫描完成（使用本地数据，API可能未生效）"
+        msg = "⚠️ 扫描完成（使用本地数据）"
         send_telegram_message(msg)
         logger.warning(msg)
 
