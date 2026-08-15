@@ -21,23 +21,24 @@ def analyze_projects(projects: List[str]) -> List[Dict]:
             "priority": "medium"
         }
         # 根据项目名关键词识别生态
-        if "kite" in p.lower():
+        lower = p.lower()
+        if "kite" in lower:
             item["ecosystem"] = "kite"
             item["actions"] = ["farm_xp", "daily_checkin", "claim"]
             item["priority"] = "high"
-        elif "pharos" in p.lower():
+        elif "pharos" in lower:
             item["ecosystem"] = "pharos"
             item["actions"] = ["daily_task", "swap", "claim"]
             item["priority"] = "high"
-        elif "arbitrum" in p.lower() or "arb" in p.lower():
+        elif "arbitrum" in lower or "arb" in lower:
             item["ecosystem"] = "arbitrum"
             item["actions"] = ["claim", "vote"]
             item["priority"] = "high"
-        elif "optimism" in p.lower() or "op" in p.lower():
+        elif "optimism" in lower or "op" in lower:
             item["ecosystem"] = "optimism"
             item["actions"] = ["claim", "vote"]
             item["priority"] = "medium"
-        elif "zksync" in p.lower() or "zk" in p.lower():
+        elif "zksync" in lower or "zk" in lower:
             item["ecosystem"] = "zksync"
             item["actions"] = ["claim", "bridge"]
             item["priority"] = "medium"
