@@ -1,4 +1,4 @@
-name: 三位一体空投系统（顶尖版）
+name: 三位一体空投系统
 
 on:
   schedule:
@@ -6,30 +6,18 @@ on:
   workflow_dispatch:
 
 jobs:
-  full-suite:
+  run:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: 设置 Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
       - name: 安装依赖
-        run: |
-          pip install -r requirements.txt
-
-      - name: 运行统一调度器
+        run: pip install -r requirements.txt
+      - name: 执行系统
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
-          WALLET_ADDRESS: ${{ secrets.WALLET_ADDRESS }}
-        run: |
-          python orchestrator.py
-
-      - name: 上传日志
-        uses: actions/upload-artifact@v4
-        with:
-          name: logs
-          path: logs/
+          WALLET_ADDRESSES: ${{ secrets.WALLET_ADDRESSES }}
+        run: python orchestrator.py
