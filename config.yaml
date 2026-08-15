@@ -1,10 +1,4 @@
-# 三位一体空投系统配置
-
-# Telegram 配置（通过环境变量设置）
-telegram:
-  enabled: true
-
-# RPC 配置
+# ===== RPC 配置 =====
 rpc:
   ethereum: "https://eth.llamarpc.com"
   polygon: "https://polygon.llamarpc.com"
@@ -12,26 +6,42 @@ rpc:
   optimism: "https://mainnet.optimism.io"
   base: "https://base.llamarpc.com"
   bsc: "https://bsc.llamarpc.com"
-  avalanche: "https://api.avax.network/ext/bc/C/rpc"
+  solana: "https://api.mainnet-beta.solana.com"
+  linea: "https://rpc.linea.build"
 
-# 扫描配置
+# ===== CryptoRank 配置 =====
+cryptorank:
+  api_key: ""
+  base_url: "https://api.cryptorank.io/v1"
+
+# ===== MCP 配置 =====
+mcp:
+  endpoint: "https://web3-discover.vercel.app/api/mcp"
+  enabled: true
+
+# ===== 扫描配置 =====
 scanner:
   min_score: 60
   max_items: 20
   timeout: 15
+  sources:
+    - mcp
+    - cryptorank
+    - web3_discover
 
-# 模块配置
-modules:
-  hunter:
+# ===== 执行配置 =====
+executor:
+  max_gas_price: 50
+  cooldown_seconds: 60
+  dry_run: false
+
+# ===== 企业级机器人配置 =====
+enterprise_bots:
+  kite_ai:
     enabled: true
-    max_projects: 20
-  agent:
+    auto_farm: true
+  pharos:
     enabled: true
-    max_strategies: 15
-  bots:
-    kite_ai:
-      enabled: true
-      interval_hours: 6
-    pharos:
-      enabled: true
-      interval_hours: 6
+    auto_daily: true
+  lootbot:
+    enabled: false  # 需要 Telegram 集成
