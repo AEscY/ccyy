@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-scanner/cryptorank_radar.py - CryptoRank + 备用数据
-（不再使用 three.ws）
+scanner/cryptorank_radar.py - 仅使用 CryptoRank 和备用数据
 """
 
 import requests
@@ -18,10 +17,12 @@ class CryptoRankRadar:
         self.session.headers.update({"User-Agent": "Mozilla/5.0"})
 
     def get_airdrops(self, limit: int = 10) -> List[Dict]:
+        # 如果有 API Key，尝试 CryptoRank
         if self.api_key:
             data = self._fetch_cryptorank(limit)
             if data:
                 return data
+        # 否则返回备用数据
         return self._get_fallback_airdrops()
 
     def _fetch_cryptorank(self, limit: int) -> Optional[List[Dict]]:
