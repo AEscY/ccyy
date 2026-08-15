@@ -2,7 +2,9 @@
 """
 三位一体空投系统 - 单文件版本
 """
-
+import sys
+sys.stderr.write("DEBUG: script started\n")
+sys.stderr.flush()
 import os
 import sys
 import logging
