@@ -14,6 +14,21 @@ import random
 import requests
 from datetime import datetime
 
+import traceback
+import sys
+
+try:
+    # 尝试导入所有依赖
+    import requests
+    import json
+    import logging
+    import os, time, random
+    from datetime import datetime
+except Exception as e:
+    with open("/tmp/error.log", "w") as f:
+        f.write(traceback.format_exc())
+    sys.exit(1)
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
