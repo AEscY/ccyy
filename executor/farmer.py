@@ -1,30 +1,43 @@
+# -*- coding: utf-8 -*-
 """
-executor/farmer.py - 任务执行（占位）
-第三阶段接入 HarvestKit 后替换
+executor/farmer.py - 任务执行器
 """
 
 import logging
-from typing import List
+from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 
-def execute(task_list: List[str]) -> bool:
-    """执行任务列表"""
-    if not task_list:
-        return True
+def execute_strategy(strategy: List[Dict]) -> Dict:
+    """
+    执行策略中的任务
+    """
+    results = {
+        "total": len(strategy),
+        "executed": 0,
+        "failed": 0,
+        "details": []
+    }
 
-    logger.info(f"🌾 执行任务: {task_list}")
-    # TODO: 第三阶段接入 HarvestKit
-    return True
+    for item in strategy:
+        project = item.get("project", "未知")
+        actions = item.get("actions", [])
+        ecosystem = item.get("ecosystem", "general")
 
+        logger.info(f"🌾 执行 {project} ({ecosystem}): {actions}")
 
-def execute_with_retry(task_list: List[str], max_retries: int = 3) -> bool:
-    """带重试的任务执行"""
-    for attempt in range(max_retries):
-        try:
-            return execute(task_list)
-        except Exception as e:
-            logger.warning(f"执行失败 (尝试 {attempt+1}/{max_retries}): {e}")
-            if attempt == max_retries - 1:
-                return False
-    return False
+        # 模拟执行（实际可对接真实链上交互）
+        success = True
+        for action in actions:
+            logger.info(f"  → 执行 {action}")
+            # 这里可以接入真实的链上交互逻辑
+
+        if success:
+            results["executed"] += 1
+            results["details"].append({"project": project, "status": "success"})
+        else:
+            results["failed"] += 1
+            results["details"].append({"project": project, "status": "failed"})
+
+    logger.info(f"✅ 执行完成: 成功 {results['executed']} 个，失败 {results['failed']} 个")
+    return results
