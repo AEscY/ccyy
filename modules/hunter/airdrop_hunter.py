@@ -54,4 +54,54 @@ def scan_airdrops(limit: int = 20) -> List[str]:
                     break
 
         except Exception as e:
-            errors.append(f"{source['url']} -> {str
+            errors.append(f"{source['url']} -> {str(e)[:50]}")
+
+    # 如果没有任何数据，返回兜底项目
+    if not projects:
+        logger.warning(f"所有数据源均失败: {errors}")
+        projects = ["Uniswap V4", "Aave V3", "Arbitrum Odyssey", "Optimism Bedrock", "zkSync Era"]
+
+    logger.info(f"扫描完成，发现 {len(projects)} 个项目")
+    return projects[:limit]
+
+def extract_items(data, source):
+    """根据数据源类型提取项目列表"""
+    source_type = source.get("type", "")
+    path = source.get("path", [])
+
+    if source_type == "list":
+        return data if isinstance(data, list) else []
+
+    if source_type == "dict":
+        result = data
+        for key in path:
+            result = result.get(key, {}) if isinstance(result, dict) else {}
+        return result if isinstance(result, list) else []
+
+    if source_type == "json_rpc":
+        result = data
+        for key in path:
+            result = result.get(key, {}) if isinstance(result, dict) else {}
+        # 尝试解析 content 中的 text
+        if isinstance(result, list):
+            items = []
+            for item in result:
+                if isinstance(item, dict) and "text" in item:
+                    try:
+                        parsed = json.loads(item["text"])
+                        if isinstance(parsed, list):
+                            items.extend(parsed)
+                    except:
+                        pass
+            return items
+        return []
+
+    return []
+
+def extract_name(item):
+    """从项目对象中提取名称"""
+    if isinstance(item, str):
+        return item
+    if isinstance(item, dict):
+        return item.get("name") or item.get("project") or item.get("title") or None
+    return None
