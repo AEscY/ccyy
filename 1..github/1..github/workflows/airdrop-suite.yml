@@ -1,0 +1,46 @@
+name: 三位一体空投系统
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # 每6小时自动运行
+  workflow_dispatch:         # 手动触发
+
+jobs:
+  full-suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 安装 Python 依赖
+        run: |
+          pip install -r requirements.txt
+          pip install requests pyyaml web3 beautifulsoup4
+
+      - name: 安装 Node.js 依赖（专用机器人）
+        run: |
+          cd modules/bots/kite_ai && npm install 2>/dev/null || true
+          cd ../pharos && npm install 2>/dev/null || true
+
+      - name: 运行统一调度器
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+          PRIVATE_KEYS: ${{ secrets.PRIVATE_KEYS }}
+        run: |
+          python orchestrator.py
+
+      - name: 上传日志
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: logs/
