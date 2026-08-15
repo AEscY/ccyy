@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Airdrop Radar - CryptoRank 正确认证版
-使用 X-API-Key 请求头（V2）或 api_key 参数（V1）
+Airdrop Radar - 多数据源整合版
+数据源优先级：Parse.bot > Web3 Discover > 本地数据
 """
 
 import os
@@ -11,17 +11,23 @@ import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
 
+import requests
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # ===== 环境变量 =====
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
-API_KEY = os.environ.get("API_KEY") or os.environ.get("CRYPTORANK_API_KEY")
+PARSE_API_KEY = os.environ.get("PARSE_API_KEY") or os.environ.get("API_KEY")
 
-logger.info(f"API_KEY configured: {'Yes' if API_KEY else 'No'}")
+if not BOT_TOKEN or not CHAT_ID:
+    logger.error("ERROR: Please set BOT_TOKEN and CHAT_ID environment variables")
+    sys.exit(1)
 
-# ===== 硬编码项目数据（兜底） =====
+logger.info(f"Parse.bot API Key configured: {'Yes' if PARSE_API_KEY else 'No'}")
+
+# ===== 本地兜底数据 =====
 PROJECTS = [
     {"name": "Uniswap V4", "chain": "Ethereum", "score": 92, "url": "https://uniswap.org", "source": "本地"},
     {"name": "Aave V3", "chain": "Polygon", "score": 88, "url": "https://aave.com", "source": "本地"},
@@ -35,113 +41,223 @@ PROJECTS = [
 current_projects = PROJECTS.copy()
 last_scan_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-# ===== CryptoRank API 调用（正确认证） =====
-def fetch_cryptorank():
-    """尝试多种方式获取数据"""
-    if not API_KEY:
+# ============================================================
+# 数据源 1: Parse.bot API (Airdrops.io 官方数据)
+# 注册地址: https://parse.bot
+# ============================================================
+def fetch_parse_bot() -> list:
+    """从 Parse.bot 获取 Airdrops.io 数据"""
+    if not PARSE_API_KEY:
+        logger.warning("Parse.bot API Key 未配置")
         return None
 
-    import requests
-
-    # 方案1: V2 端点 + X-API-Key 头（官方推荐）
     try:
-        url = "https://api.cryptorank.io/v2/airdrops"
-        headers = {
-            "api_key": API_KEY,
-            "Accept": "application/json"
-        }
-        params = {"limit": 20, "status": "active"}
-        logger.info("Trying V2 with X-API-Key header")
+        url = "https://api.parse.bot/scraper/9af824b0-75d0-4d52-bcd6-0e68141b30c8/get_latest_airdrops"
+        headers = {"X-API-Key": PARSE_API_KEY}
+        params = {"page": 1, "sort": "newest"}
+
+        logger.info("正在从 Parse.bot 获取数据...")
         resp = requests.get(url, headers=headers, params=params, timeout=15)
-        logger.info(f"V2 status: {resp.status_code}")
-        if resp.status_code == 200:
-            return parse_response(resp.json())
-        else:
-            logger.warning(f"V2 failed: {resp.text[:200]}")
-    except Exception as e:
-        logger.warning(f"V2 error: {e}")
 
-    # 方案2: V1 端点 + api_key 查询参数
+        if resp.status_code == 200:
+            data = resp.json()
+            items = data.get("data", [])
+            if not items:
+                logger.warning("Parse.bot 返回空数据")
+                return None
+
+            projects = []
+            for item in items[:20]:
+                # 提取链信息
+                chain = item.get("chain", "多链")
+                if isinstance(chain, list):
+                    chain = chain[0] if chain else "多链"
+
+                # 计算评分
+                score = item.get("popularity") or item.get("score") or 50
+                try:
+                    score = int(score)
+                except:
+                    score = 50
+
+                projects.append({
+                    "name": item.get("name") or item.get("title") or "未知",
+                    "chain": chain,
+                    "score": min(score + 10, 100),
+                    "url": item.get("website") or item.get("url") or "",
+                    "source": "Parse.bot"
+                })
+
+            logger.info(f"Parse.bot 获取到 {len(projects)} 个项目")
+            return projects
+        else:
+            logger.error(f"Parse.bot API 错误: {resp.status_code} - {resp.text[:100]}")
+            return None
+
+    except Exception as e:
+        logger.error(f"Parse.bot 请求异常: {e}")
+        return None
+
+# ============================================================
+# 数据源 2: Web3 Discover (无需注册，32个已验证空投)
+# ============================================================
+def fetch_web3_discover() -> list:
+    """从 Web3 Discover 获取空投数据"""
     try:
-        url = "https://api.cryptorank.io/v1/airdrops"
-        params = {
-            "api_key": API_KEY,
-            "limit": 20,
-            "status": "active"
+        url = "https://web3-discover.vercel.app/api/mcp"
+        payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "list_active_airdrops",
+                "arguments": {"limit": 20}
+            }
         }
-        logger.info("Trying V1 with api_key param")
-        resp = requests.get(url, params=params, timeout=15)
-        logger.info(f"V1 status: {resp.status_code}")
-        if resp.status_code == 200:
-            return parse_response(resp.json())
-        else:
-            logger.warning(f"V1 failed: {resp.text[:200]}")
-    except Exception as e:
-        logger.warning(f"V1 error: {e}")
 
+        logger.info("正在从 Web3 Discover 获取数据...")
+        resp = requests.post(url, json=payload, timeout=15)
+
+        if resp.status_code == 200:
+            data = resp.json()
+            result = data.get("result", {})
+            content = result.get("content", [])
+
+            if not content:
+                logger.warning("Web3 Discover 返回空数据")
+                return None
+
+            projects = []
+            for item in content[:20]:
+                if isinstance(item, dict):
+                    # 尝试解析不同格式
+                    text = item.get("text", "")
+                    if isinstance(text, str):
+                        try:
+                            parsed = json.loads(text)
+                            if isinstance(parsed, list):
+                                for p in parsed[:20]:
+                                    projects.append({
+                                        "name": p.get("name") or p.get("project") or "未知",
+                                        "chain": p.get("chain") or p.get("network") or "多链",
+                                        "score": int(p.get("score") or p.get("popularity") or 50),
+                                        "url": p.get("url") or p.get("website") or "",
+                                        "source": "Web3 Discover"
+                                    })
+                                return projects
+                        except:
+                            # 如果不是 JSON，尝试提取文本中的项目名
+                            projects.append({
+                                "name": text[:50],
+                                "chain": "多链",
+                                "score": 70,
+                                "url": "",
+                                "source": "Web3 Discover"
+                            })
+            return projects
+        else:
+            logger.error(f"Web3 Discover 错误: {resp.status_code}")
+            return None
+
+    except Exception as e:
+        logger.error(f"Web3 Discover 请求异常: {e}")
+        return None
+
+# ============================================================
+# 数据源 3: Airdrop Tracker (无需注册)
+# ============================================================
+def fetch_airdrop_tracker() -> list:
+    """从 Airdrop Tracker 获取数据"""
+    try:
+        url = "https://airdrop-tracker-omega.vercel.app/api/airdrops"
+        logger.info("正在从 Airdrop Tracker 获取数据...")
+        resp = requests.get(url, timeout=15)
+
+        if resp.status_code == 200:
+            data = resp.json()
+            if isinstance(data, list) and data:
+                projects = []
+                for item in data[:20]:
+                    projects.append({
+                        "name": item.get("name") or item.get("project") or "未知",
+                        "chain": item.get("chain") or "多链",
+                        "score": int(item.get("score") or 60),
+                        "url": item.get("url") or item.get("website") or "",
+                        "source": "Airdrop Tracker"
+                    })
+                logger.info(f"Airdrop Tracker 获取到 {len(projects)} 个项目")
+                return projects
+        return None
+    except Exception as e:
+        logger.error(f"Airdrop Tracker 请求异常: {e}")
+        return None
+
+# ============================================================
+# 统一获取函数（按优先级尝试）
+# ============================================================
+def fetch_airdrops() -> list:
+    """按优先级依次尝试各个数据源"""
+    # 1. 尝试 Parse.bot（需要 API Key）
+    if PARSE_API_KEY:
+        projects = fetch_parse_bot()
+        if projects:
+            return projects
+
+    # 2. 尝试 Web3 Discover
+    projects = fetch_web3_discover()
+    if projects:
+        return projects
+
+    # 3. 尝试 Airdrop Tracker
+    projects = fetch_airdrop_tracker()
+    if projects:
+        return projects
+
+    # 4. 所有数据源都失败，返回 None
     return None
 
-def parse_response(data):
-    """解析 CryptoRank 响应，提取项目列表"""
-    items = data.get("data", [])
-    if not items:
-        return None
-    projects = []
-    for item in items[:20]:
-        chain = item.get("chain", "多链")
-        if isinstance(chain, list):
-            chain = chain[0] if chain else "多链"
-        score = item.get("popularity") or item.get("score") or item.get("rating") or 50
-        try:
-            score = int(score)
-        except:
-            score = 50
-        projects.append({
-            "name": item.get("name") or item.get("title") or "未知",
-            "chain": chain,
-            "score": min(score + 10, 100),
-            "url": item.get("website") or item.get("url") or "",
-            "source": "CryptoRank"
-        })
-    return projects
-
-# ===== Telegram 发送 =====
-def send_telegram_message(text):
+# ============================================================
+# Telegram 发送
+# ============================================================
+def send_telegram_message(text: str) -> bool:
     try:
         if not BOT_TOKEN or not CHAT_ID:
             return False
-        import requests
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
         resp = requests.post(url, json={"chat_id": CHAT_ID, "text": text}, timeout=10)
         return resp.status_code == 200
     except Exception as e:
-        logger.warning(f"Telegram send failed: {e}")
+        logger.warning(f"Telegram 发送失败: {e}")
         return False
 
-# ===== 扫描函数 =====
+# ============================================================
+# 扫描函数
+# ============================================================
 def run_scan():
     global current_projects, last_scan_time
-    logger.info("Starting scan...")
-    
-    projects = fetch_cryptorank()
-    
+    logger.info("开始扫描空投...")
+
+    projects = fetch_airdrops()
+
     if projects:
         current_projects = projects
-        last_scan_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        msg = f"✅ 扫描完成，发现 {len(projects)} 个真实项目"
-        send_telegram_message(msg)
+        source = projects[0].get("source", "未知") if projects else "未知"
+        msg = f"✅ 扫描完成，发现 {len(projects)} 个项目 (来源: {source})"
         logger.info(msg)
     else:
         current_projects = PROJECTS.copy()
-        last_scan_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        msg = "⚠️ 扫描完成（使用本地数据）"
-        send_telegram_message(msg)
+        msg = "⚠️ 扫描完成（使用本地数据，所有 API 均不可用）"
         logger.warning(msg)
+
+    last_scan_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    send_telegram_message(msg)
 
 # ===== 启动时自动扫描 =====
 run_scan()
 
-# ===== HTTP 处理器 =====
+# ============================================================
+# HTTP 服务器
+# ============================================================
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
@@ -162,7 +278,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(404)
                 self.end_headers()
         except Exception as e:
-            logger.error(f"Request error: {e}")
+            logger.error(f"请求错误: {e}")
             self.send_response(500)
             self.end_headers()
             self.wfile.write(f"Server Error: {e}".encode())
@@ -176,7 +292,7 @@ class Handler(BaseHTTPRequestHandler):
     def _serve_html(self):
         projects = current_projects
         project_count = len(projects)
-        
+
         rows = ""
         if not projects:
             rows = "<tr><td colspan='6' style='text-align:center;padding:40px;'>暂无数据</td></tr>"
@@ -187,14 +303,14 @@ class Handler(BaseHTTPRequestHandler):
                 score = p.get('score', 0)
                 source = p.get('source', '-')
                 url = p.get('url', '')
-                
+
                 if score >= 80:
                     score_class = "score-high"
                 elif score >= 60:
                     score_class = "score-medium"
                 else:
                     score_class = "score-low"
-                
+
                 link = f"<a href='{url}' target='_blank' class='link'>访问</a>" if url else '-'
                 rows += f"""
                         <tr>
@@ -288,5 +404,6 @@ class Handler(BaseHTTPRequestHandler):
 # ===== 启动 =====
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 10000))
-    logger.info(f"🚀 Airdrop Radar started on port {port}")
+    logger.info(f"🚀 Airdrop Radar 启动，监听端口 {port}")
+    logger.info(f"📡 数据源优先级: Parse.bot -> Web3 Discover -> 本地数据")
     HTTPServer(('', port), Handler).serve_forever()
