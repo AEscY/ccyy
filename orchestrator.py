@@ -1,85 +1,69 @@
 # -*- coding: utf-8 -*-
-"""
-三位一体空投系统 - 仅使用 MCP + 本地备用
-"""
-
 import os
 import logging
+import time
+import random
 from datetime import datetime
-import requests
-import json
 
-from mcp_client import list_active_airdrops, check_wallet
+from ai_agent import run_ai_agent
+from hunter import run_hunter
+from bots.kite_ai import run_kite_bot
+from bots.pharos import run_pharos_bot
+from bots.arb_claim import run_arb_claim
+from telegram import send_telegram_message
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
-WALLET_ADDRESS = os.environ.get("WALLET_ADDRESS", "")
-
-def send_telegram(text):
-    if not BOT_TOKEN or not CHAT_ID:
-        return
-    try:
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                      json={"chat_id": CHAT_ID, "text": text[:4000]}, timeout=10)
-    except Exception as e:
-        logger.error(f"Telegram 发送失败: {e}")
+WALLET_ADDRESSES = os.environ.get("WALLET_ADDRESSES", "").split(",")
 
 def main():
-    logger.info("🚀 开始执行空投雷达（MCP 模式）")
-    
-    # 1. 通过 MCP 获取空投
-    projects = []
-    try:
-        result = list_active_airdrops(limit=20)
-        if result and "result" in result:
-            content = result["result"].get("content", [])
-            for item in content:
-                if isinstance(item, dict):
-                    text = item.get("text", "")
-                    try:
-                        data = json.loads(text)
-                        if isinstance(data, list):
-                            for p in data:
-                                projects.append(p.get("name", "未知"))
-                    except:
-                        pass
-    except Exception as e:
-        logger.error(f"MCP 获取失败: {e}")
+    start = datetime.now()
+    logger.info("🚀 三位一体空投系统启动")
 
-    if not projects:
-        # 无数据时使用本地备份
-        projects = ["Uniswap V4", "Aave V3", "Arbitrum Odyssey", "Optimism Bedrock", "zkSync Era"]
-        logger.info("使用本地备份数据")
+    # 阶段1: AI 情报
+    logger.info("📡 AI 情报扫描...")
+    ai_projects = run_ai_agent()
+    if not ai_projects:
+        send_telegram_message("⚠️ AI 未发现项目")
+        return
 
-    projects = list(set(projects))
-    logger.info(f"共 {len(projects)} 个项目")
+    # 阶段2: Hunter 验证
+    logger.info("🔍 Hunter 验证...")
+    hunter_projects = run_hunter(ai_projects)
+    all_projects = list(set(hunter_projects + ai_projects))
+    logger.info(f"共 {len(all_projects)} 个项目")
 
-    # 2. 简单分析（不依赖 AI 模块）
-    strategy = []
-    for p in projects:
-        strategy.append({"project": p, "actions": ["research", "claim"]})
+    # 阶段3: 专用机器人
+    logger.info("🤖 执行专用机器人...")
+    bot_results = []
+    for wallet in WALLET_ADDRESSES:
+        wallet = wallet.strip()
+        if not wallet:
+            continue
+        if any("kite" in p.lower() for p in all_projects):
+            bot_results.append(f"Kite AI ({wallet[:8]}): {'✅' if run_kite_bot(wallet) else '❌'}")
+        if any("pharos" in p.lower() for p in all_projects):
+            bot_results.append(f"Pharos ({wallet[:8]}): {'✅' if run_pharos_bot(wallet) else '❌'}")
+        if any("arb" in p.lower() for p in all_projects):
+            bot_results.append(f"Arbitrum ({wallet[:8]}): {'✅' if run_arb_claim(wallet) else '❌'}")
+        time.sleep(random.randint(1, 3))
 
-    # 3. 钱包检查（可选）
-    wallet_info = ""
-    if WALLET_ADDRESS:
-        try:
-            result = check_wallet(WALLET_ADDRESS)
-            if result and "result" in result:
-                wallet_info = f"\n📊 钱包资格: {result['result'].get('content', [])}"
-        except Exception as e:
-            logger.error(f"钱包检查失败: {e}")
-
-    # 4. 报告
+    # 报告
+    elapsed = (datetime.now() - start).seconds
     report = f"""
-✅ 空投雷达执行完毕
-- 发现项目: {len(projects)} 个
+✅ 三位一体空投系统执行完毕
+- AI 发现: {len(ai_projects)} 个
+- Hunter 验证: {len(hunter_projects)} 个
+- 项目总数: {len(all_projects)} 个
+- 机器人执行:
+  {'  '.join(bot_results) if bot_results else '  无匹配生态'}
+- 耗时: {elapsed} 秒
 - 时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-{wallet_info}
 """
-    send_telegram(report)
+    send_telegram_message(report)
     logger.info(report)
 
 if __name__ == "__main__":
