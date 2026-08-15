@@ -1,16 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-Airdrop Radar - 多数据源整合版
-数据源优先级：Parse.bot > Web3 Discover > 本地数据
+Airdrop Radar - 使用 three.ws 免费 API
+数据源：https://three.ws (Airdrop Eligibility)
 """
 
 import os
-import sys
 import logging
 import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
-
 import requests
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -19,13 +17,10 @@ logger = logging.getLogger(__name__)
 # ===== 环境变量 =====
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
-PARSE_API_KEY = os.environ.get("PARSE_API_KEY") or os.environ.get("API_KEY")
 
 if not BOT_TOKEN or not CHAT_ID:
     logger.error("ERROR: Please set BOT_TOKEN and CHAT_ID environment variables")
-    sys.exit(1)
-
-logger.info(f"Parse.bot API Key configured: {'Yes' if PARSE_API_KEY else 'No'}")
+    # 不退出，让网页能显示，但 Telegram 功能会失效
 
 # ===== 本地兜底数据 =====
 PROJECTS = [
@@ -42,137 +37,84 @@ current_projects = PROJECTS.copy()
 last_scan_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
 # ============================================================
-# 数据源 1: Parse.bot API (Airdrops.io 官方数据)
-# 注册地址: https://parse.bot
+# 数据源: three.ws Airdrop Eligibility API (完全免费，无需 Key)
+# 文档: https://three.ws
 # ============================================================
-def fetch_parse_bot() -> list:
-    """从 Parse.bot 获取 Airdrops.io 数据"""
-    if not PARSE_API_KEY:
-        logger.warning("Parse.bot API Key 未配置")
-        return None
-
+def fetch_three_ws_airdrops() -> list:
+    """
+    从 three.ws 获取空投资格数据
+    注意：此 API 需要传入钱包地址来查询资格
+    这里我们使用一个示例地址来获取通用空投列表
+    """
     try:
-        url = "https://api.parse.bot/scraper/9af824b0-75d0-4d52-bcd6-0e68141b30c8/get_latest_airdrops"
-        headers = {"X-API-Key": PARSE_API_KEY}
-        params = {"page": 1, "sort": "newest"}
-
-        logger.info("正在从 Parse.bot 获取数据...")
-        resp = requests.get(url, headers=headers, params=params, timeout=15)
-
+        # 使用一个公开的示例钱包地址来获取空投信息
+        # 你可以替换成自己的钱包地址
+        example_wallet = "0x742d35Cc6634C0532925a3b844Bc454e4438f44e"
+        url = f"https://three.ws/api/crypto/airdrop/{example_wallet}"
+        
+        logger.info("正在从 three.ws 获取空投数据...")
+        resp = requests.get(url, timeout=15)
+        
         if resp.status_code == 200:
             data = resp.json()
-            items = data.get("data", [])
-            if not items:
-                logger.warning("Parse.bot 返回空数据")
-                return None
-
-            projects = []
-            for item in items[:20]:
-                # 提取链信息
-                chain = item.get("chain", "多链")
-                if isinstance(chain, list):
-                    chain = chain[0] if chain else "多链"
-
-                # 计算评分
-                score = item.get("popularity") or item.get("score") or 50
-                try:
-                    score = int(score)
-                except:
-                    score = 50
-
-                projects.append({
-                    "name": item.get("name") or item.get("title") or "未知",
-                    "chain": chain,
-                    "score": min(score + 10, 100),
-                    "url": item.get("website") or item.get("url") or "",
-                    "source": "Parse.bot"
-                })
-
-            logger.info(f"Parse.bot 获取到 {len(projects)} 个项目")
-            return projects
-        else:
-            logger.error(f"Parse.bot API 错误: {resp.status_code} - {resp.text[:100]}")
-            return None
-
-    except Exception as e:
-        logger.error(f"Parse.bot 请求异常: {e}")
-        return None
-
-# ============================================================
-# 数据源 2: Web3 Discover (无需注册，32个已验证空投)
-# ============================================================
-def fetch_web3_discover() -> list:
-    """从 Web3 Discover 获取空投数据"""
-    try:
-        url = "https://web3-discover.vercel.app/api/mcp"
-        payload = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/call",
-            "params": {
-                "name": "list_active_airdrops",
-                "arguments": {"limit": 20}
-            }
-        }
-
-        logger.info("正在从 Web3 Discover 获取数据...")
-        resp = requests.post(url, json=payload, timeout=15)
-
-        if resp.status_code == 200:
-            data = resp.json()
-            result = data.get("result", {})
-            content = result.get("content", [])
-
-            if not content:
-                logger.warning("Web3 Discover 返回空数据")
-                return None
-
-            projects = []
-            for item in content[:20]:
-                if isinstance(item, dict):
-                    # 尝试解析不同格式
-                    text = item.get("text", "")
-                    if isinstance(text, str):
-                        try:
-                            parsed = json.loads(text)
-                            if isinstance(parsed, list):
-                                for p in parsed[:20]:
-                                    projects.append({
-                                        "name": p.get("name") or p.get("project") or "未知",
-                                        "chain": p.get("chain") or p.get("network") or "多链",
-                                        "score": int(p.get("score") or p.get("popularity") or 50),
-                                        "url": p.get("url") or p.get("website") or "",
-                                        "source": "Web3 Discover"
-                                    })
-                                return projects
-                        except:
-                            # 如果不是 JSON，尝试提取文本中的项目名
+            logger.info(f"three.ws 响应: {json.dumps(data, ensure_ascii=False)[:200]}...")
+            
+            # 根据 three.ws 的实际响应结构解析
+            # 如果响应是列表，直接处理
+            if isinstance(data, list):
+                projects = []
+                for item in data[:20]:
+                    if isinstance(item, dict):
+                        projects.append({
+                            "name": item.get("name") or item.get("project") or "未知空投",
+                            "chain": item.get("chain") or item.get("network") or "多链",
+                            "score": int(item.get("score") or item.get("popularity") or 70),
+                            "url": item.get("url") or item.get("website") or "",
+                            "source": "three.ws"
+                        })
+                if projects:
+                    logger.info(f"three.ws 获取到 {len(projects)} 个项目")
+                    return projects
+            
+            # 如果响应是字典，尝试提取 data 字段
+            if isinstance(data, dict):
+                items = data.get("data") or data.get("airdrops") or data.get("results")
+                if isinstance(items, list):
+                    projects = []
+                    for item in items[:20]:
+                        if isinstance(item, dict):
                             projects.append({
-                                "name": text[:50],
-                                "chain": "多链",
-                                "score": 70,
-                                "url": "",
-                                "source": "Web3 Discover"
+                                "name": item.get("name") or item.get("project") or "未知空投",
+                                "chain": item.get("chain") or item.get("network") or "多链",
+                                "score": int(item.get("score") or item.get("popularity") or 70),
+                                "url": item.get("url") or item.get("website") or "",
+                                "source": "three.ws"
                             })
-            return projects
-        else:
-            logger.error(f"Web3 Discover 错误: {resp.status_code}")
+                    if projects:
+                        logger.info(f"three.ws 获取到 {len(projects)} 个项目")
+                        return projects
+            
+            logger.warning("three.ws 返回数据格式未知，尝试备用方案")
             return None
-
+            
+        else:
+            logger.error(f"three.ws API 错误: {resp.status_code} - {resp.text[:100]}")
+            return None
+            
     except Exception as e:
-        logger.error(f"Web3 Discover 请求异常: {e}")
+        logger.error(f"three.ws 请求异常: {e}")
         return None
 
 # ============================================================
-# 数据源 3: Airdrop Tracker (无需注册)
+# 备用数据源: Airdrop Tracker (无需注册)
 # ============================================================
 def fetch_airdrop_tracker() -> list:
     """从 Airdrop Tracker 获取数据"""
     try:
         url = "https://airdrop-tracker-omega.vercel.app/api/airdrops"
         logger.info("正在从 Airdrop Tracker 获取数据...")
-        resp = requests.get(url, timeout=15)
-
+        resp = requests.get(url, timeout=10)
+        
         if resp.status_code == 200:
             data = resp.json()
             if isinstance(data, list) and data:
@@ -197,23 +139,17 @@ def fetch_airdrop_tracker() -> list:
 # ============================================================
 def fetch_airdrops() -> list:
     """按优先级依次尝试各个数据源"""
-    # 1. 尝试 Parse.bot（需要 API Key）
-    if PARSE_API_KEY:
-        projects = fetch_parse_bot()
-        if projects:
-            return projects
-
-    # 2. 尝试 Web3 Discover
-    projects = fetch_web3_discover()
+    # 1. 尝试 three.ws
+    projects = fetch_three_ws_airdrops()
     if projects:
         return projects
-
-    # 3. 尝试 Airdrop Tracker
+    
+    # 2. 尝试 Airdrop Tracker
     projects = fetch_airdrop_tracker()
     if projects:
         return projects
-
-    # 4. 所有数据源都失败，返回 None
+    
+    # 3. 所有数据源都失败，返回 None
     return None
 
 # ============================================================
@@ -256,7 +192,7 @@ def run_scan():
 run_scan()
 
 # ============================================================
-# HTTP 服务器
+# HTTP 服务器（保持不变）
 # ============================================================
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -405,5 +341,5 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 10000))
     logger.info(f"🚀 Airdrop Radar 启动，监听端口 {port}")
-    logger.info(f"📡 数据源优先级: Parse.bot -> Web3 Discover -> 本地数据")
+    logger.info("📡 数据源: three.ws -> Airdrop Tracker -> 本地数据")
     HTTPServer(('', port), Handler).serve_forever()
