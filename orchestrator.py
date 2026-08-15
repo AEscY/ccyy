@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-三位一体空投系统 - 统一调度器（MCP 优先版）
+三位一体空投系统 - 统一调度器（MCP 优先）
 """
 
 import os
@@ -24,6 +24,7 @@ with open("config.yaml", "r") as f:
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 WALLET_ADDRESS = os.environ.get("WALLET_ADDRESS", "")
+API_KEY = os.environ.get("API_KEY", "")  # CryptoRank 可选
 
 def send_telegram(text):
     if not BOT_TOKEN or not CHAT_ID:
@@ -34,7 +35,7 @@ def send_telegram(text):
     except Exception as e:
         logger.error(f"Telegram 发送失败: {e}")
 
-# ===== MCP 发现（主） =====
+# ===== MCP 发现 =====
 def discover_with_mcp():
     logger.info("🟢 步骤1: MCP 发现空投...")
     try:
@@ -60,12 +61,14 @@ def discover_with_mcp():
         logger.error(f"MCP 失败: {e}")
         return []
 
-# ===== 备用：CryptoRank（如果配置了 API Key） =====
+# ===== 备用：CryptoRank（如果有 API Key） =====
 def scan_cryptorank():
+    if not API_KEY:
+        return []
     logger.info("🟡 步骤2: CryptoRank 扫描...")
     try:
         from scanner.cryptorank_radar import CryptoRankRadar
-        radar = CryptoRankRadar()
+        radar = CryptoRankRadar(api_key=API_KEY)
         projects = radar.get_airdrops(limit=20)
         if projects:
             names = [p.get("name", "未知") for p in projects]
@@ -95,33 +98,30 @@ def main():
     start = datetime.now()
     logger.info("🚀 执行三位一体空投系统 (MCP 优先)")
 
-    # 1. 尝试 MCP
+    # 1. MCP
     projects = discover_with_mcp()
-    if not projects:
-        # 2. 备用 CryptoRank
+    if not projects and API_KEY:
         projects = scan_cryptorank()
 
     if not projects:
         send_telegram("⚠️ 未发现新空投项目（所有数据源均不可用）")
         return
 
-    # 去重
     projects = list(set(projects))
     logger.info(f"去重后共 {len(projects)} 个项目")
 
-    # 3. AI 分析
+    # 2. AI 分析
     from commander.hunter import analyze_projects
     strategy = analyze_projects(projects)
     logger.info(f"生成 {len(strategy)} 条策略")
 
-    # 4. 执行
+    # 3. 执行
     from executor.farmer import execute_strategy
     result = execute_strategy(strategy)
 
-    # 5. 钱包检查（可选）
+    # 4. 钱包检查
     wallet_result = check_wallet_eligibility()
 
-    # 6. 报告
     elapsed = (datetime.now() - start).seconds
     report = f"""
 ✅ *三位一体空投系统执行完毕*
